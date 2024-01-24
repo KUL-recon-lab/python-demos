@@ -1,10 +1,3 @@
-"""
-1D Fourier transform demo
-=========================
-
-foo bar
-"""
-
 # %%
 import numpy as np
 import matplotlib.pyplot as plt
@@ -25,7 +18,6 @@ f[14] = 8
 
 # f = 2.5 * np.cos(6 * (2 * np.pi) * x / n) + 1
 # f -= f.mean()
-
 # f = np.exp(-((x - 9) ** 2) / (2 * 2**2))
 
 # %%
