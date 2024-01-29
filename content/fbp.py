@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.animation as animation
+import matplotlib.transforms as mtransforms
 import scipy.ndimage as ndi
 from collections.abc import Sequence
 
@@ -167,7 +168,7 @@ disk3 = RadonDisk(0.2)
 disk3.amplitude = -1
 disk3.x0_offset = -0.7
 
-disk4 = RadonDisk(0.12)
+disk4 = RadonDisk(0.14)
 disk4.amplitude = -0.5
 disk4.x1_offset = -0.7
 
@@ -179,7 +180,7 @@ radon_object = RadonObjectSequence([disk0, disk1, disk2, disk3, disk4, disk5])
 
 # %%
 # setup r and phi coordinates
-r = np.linspace(-2, 2, 151)
+r = np.linspace(-2.5, 2.5, 151)
 num_phi = int(0.5*r.shape[0]*np.pi) + 1
 phi = np.linspace(0, np.pi, num_phi, endpoint=False)
 PHI, R = np.meshgrid(phi, r, indexing='ij')
@@ -255,7 +256,17 @@ def _update_animation(i):
     ax5.set_title(f'mean of first {(i+1):03} back projections', fontsize='medium')
     ax6.set_title(f'mean of first {(i+1):03} filtered back projections', fontsize='medium')
 
-    return (p1, p2, img3, img4, img5, img6)
+    t = mtransforms.Affine2D().rotate_around(0,0,-phi[i])
+    for ar in arr:
+        ar.set_transform(t + ax0.transData)
+    for k, s in enumerate(np.linspace(-1,1,7)):
+        d0 = s*np.sin(phi[i])
+        d1 = s*np.cos(phi[i])
+        ann[k].set_position((1.2*R*np.cos(phi[i]) + d0, -1.2*R*np.sin(phi[i]) + d1))
+        ann[k].xy = (1.2*R*np.cos(phi[i]) + d0, -1.2*R*np.sin(phi[i]) + d1)
+
+
+    return (p1, p2, img3, img4, img5, img6, arr, ann)
 
 
 # %%
@@ -278,11 +289,14 @@ ax0.imshow(radon_object.values(X0hr,X1hr), cmap='Greys', extent = [r.min(),r.max
 i = 0
 R = 1.5
 
+arr = []
+ann = []
+
 for s in np.linspace(-1,1,7):
     d0 = s*np.sin(phi[i])
     d1 = s*np.cos(phi[i])
-    ax0.arrow(R*np.cos(phi[i]) + d0, -R*np.sin(phi[i]) + d1, -2*R*np.cos(phi[i]), 2*R*np.sin(phi[i]), color='r', width=0.001, head_width = 0.1)
-    ax0.annotate(f'{s:.1f}', (1.2*R*np.cos(phi[i]) + d0, -1.2*R*np.sin(phi[i]) + d1), color = 'r', fontsize='small', ha='center', va='center')
+    arr.append(ax0.arrow(R*np.cos(phi[i]) + d0, -R*np.sin(phi[i]) + d1, -2*R*np.cos(phi[i]), 2*R*np.sin(phi[i]), color='r', width=0.001, head_width = 0.1))
+    ann.append(ax0.annotate(f'{s:.1f}', (1.2*R*np.cos(phi[i]) + d0, -1.2*R*np.sin(phi[i]) + d1), color = 'r', fontsize='small', ha='center', va='center', annotation_clip=True))
 
 p1 = ax1.plot(r, sino[i,:], color='k')[0]
 ax1.set_ylim(sino.min(), sino.max())
@@ -321,5 +335,9 @@ ax5.set_title(f'mean of first {(i+1):03} back projections', fontsize='medium')
 ax6.set_title(f'mean of first {(i+1):03} filtered back projections', fontsize='medium')
 
 ani = animation.FuncAnimation(fig2, _update_animation, num_phi, interval=5, blit=False, repeat = False)
+
+# save animation to gif
+#ani.save('fbp_animation.mp4', writer = animation.FFMpegWriter(fps=10))
+
 fig2.show()
 
