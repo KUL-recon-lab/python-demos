@@ -36,9 +36,9 @@ radon_object = RadonObjectSequence([disk0, disk1, disk2, disk3, disk4])
 # setup r and phi coordinates
 r = np.linspace(-3.1, 3.1, 151)
 num_phi = int(0.5 * r.shape[0] * np.pi) + 1
-phi = np.linspace(0, np.pi, num_phi, endpoint=False)
+phi = np.linspace(0, 1 * np.pi, num_phi, endpoint=False)
 PHI, R = np.meshgrid(phi, r, indexing="ij")
-x = np.linspace(r.min(), r.max(), 3 * r.shape[0])
+x = np.linspace(r.min(), r.max(), 351)
 X0, X1 = np.meshgrid(r, r, indexing="ij")
 X0hr, X1hr = np.meshgrid(x, x, indexing="ij")
 
@@ -59,9 +59,16 @@ back_proj = back_projs.mean(axis=0)
 # %%
 # filtered back projection
 
-# setup a ramp filter
-k = np.fft.fftfreq(r.shape[0], (r[1] - r[0]))
-f = np.fft.fftshift(np.fft.ifft(np.abs(k))).real
+# see https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4341983/
+# for discrete implementation of ramp filter
+
+n_filter = r.shape[0]
+
+r_shift = np.arange(n_filter) - n_filter // 2
+f = np.zeros(n_filter)
+f[r_shift != 0] = -1 / (np.pi**2 * r_shift[r_shift != 0] ** 2)
+f[(r_shift % 2) == 0] = 0
+f[r_shift == 0] = 0.25
 
 proj.filter = f
 filtered_back_projs = proj.backproject(sino)
@@ -151,7 +158,6 @@ def _update_animation(i):
 
 # %%
 # animated random transform and sinogram
-
 
 fig2 = plt.figure(tight_layout=True, figsize=(12, 8))
 gs = gridspec.GridSpec(4, 6)
@@ -272,11 +278,12 @@ ax4.set_title(f"filtered back projection of profile {(i+1):03}", fontsize="mediu
 ax5.set_title(f"mean of first {(i+1):03} back projections", fontsize="medium")
 ax6.set_title(f"mean of first {(i+1):03} filtered back projections", fontsize="medium")
 
-ani = animation.FuncAnimation(
-    fig2, _update_animation, num_phi, interval=5, blit=False, repeat=False
-)
-
-# save animation to gif
+## create animation
+# ani = animation.FuncAnimation(
+#    fig2, _update_animation, num_phi, interval=5, blit=False, repeat=False
+# )
+#
+## save animation to gif
 # ani.save("fbp_animation.mp4", writer=animation.FFMpegWriter(fps=20))
 
 fig2.show()
