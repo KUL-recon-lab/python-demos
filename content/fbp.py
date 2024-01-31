@@ -45,14 +45,22 @@ X0hr, X1hr = np.meshgrid(x, x, indexing="ij")
 # %%
 # analytic calculation of the randon transform
 sino = radon_object.radon_transform(R, PHI)
+emis_sino = sino.copy()
 
 # %%
 # add Poisson noise
-# weights = np.exp(-disk0.radon_transform(R, PHI))
-# sino = np.random.poisson(3000 * weights * sino).astype(float)
-# sino /= weights
-#
-# print(f"counts: {(sino.sum() / 1e6):.1f} million")
+weights = np.exp(-disk0.radon_transform(R, PHI))
+
+sino = 30000 * weights * sino
+contam = np.full(sino.shape, 0.1 * sino.mean())
+
+sino = np.random.poisson(sino + contam).astype(float)
+emis_sino = sino.copy()
+
+# pre-correct sinogram
+sino = (sino - contam) / weights
+
+print(f"counts: {(sino.sum() / 1e6):.1f} million")
 
 # %%
 # simulate "dead pixel" in detector
