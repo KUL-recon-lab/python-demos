@@ -69,11 +69,23 @@ class RadonObject(abc.ABC):
         )
         phi_prime = np.arctan2(self._s0 * np.sin(phi), self._s1 * np.cos(phi))
 
-        return self._amplitude * self._centered_radon_transform(
-            s_prime
-            - self._x0_offset * np.cos(phi_prime)
-            - self._x1_offset * np.sin(phi_prime),
-            phi_prime,
+        fac = (
+            self._s0
+            * self._s1
+            / np.sqrt(
+                self._s0**2 * np.cos(phi) ** 2 + self._s1**2 * np.sin(phi) ** 2
+            )
+        )
+
+        return (
+            self._amplitude
+            * fac
+            * self._centered_radon_transform(
+                s_prime
+                - self._x0_offset * np.cos(phi_prime)
+                - self._x1_offset * np.sin(phi_prime),
+                phi_prime,
+            )
         )
 
     def values(self, x0: np.ndarray, x1: np.ndarray) -> np.ndarray:
@@ -185,8 +197,6 @@ class RotationBasedProjector:
         for i, profile in enumerate(sinogram):
             if self.filter is not None:
                 profile = np.convolve(profile, self.filter, mode="same")
-
-            m = self.num_r // 2
 
             tmp_img = np.tile(profile, (self.num_r, 1))
             back_imgs[i, ...] = ndi.rotate(
