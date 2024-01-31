@@ -48,7 +48,15 @@ sino = radon_object.radon_transform(R, PHI)
 
 # %%
 # add Poisson noise
-# sino = np.random.poisson(500*sino)
+# weights = np.exp(-disk0.radon_transform(R, PHI))
+# sino = np.random.poisson(3000 * weights * sino).astype(float)
+# sino /= weights
+#
+# print(f"counts: {(sino.sum() / 1e6):.1f} million")
+
+# %%
+# simulate "dead pixel" in detector
+# sino[:, ::16] = 0
 
 # %%
 # back projection
