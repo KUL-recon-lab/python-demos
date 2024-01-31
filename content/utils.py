@@ -165,6 +165,20 @@ class RotationBasedProjector:
     def filter(self, value: np.ndarray | None) -> None:
         self._filter = value
 
+    def forwardproject(self, image: np.ndarray) -> np.ndarray:
+        sinogram = np.zeros((self.num_phi, self.num_r), dtype=float)
+
+        for i, phi in enumerate(self._phis):
+            sinogram[i, :] = ndi.rotate(
+                image,
+                -((180.0 / np.pi) * phi - 90),
+                reshape=False,
+                order=1,
+                prefilter=False,
+            ).sum(axis=0)
+
+        return sinogram
+
     def backproject(self, sinogram: np.ndarray) -> np.ndarray:
         back_imgs = np.zeros((self.num_phi, self.num_r, self.num_r), dtype=float)
 
@@ -174,13 +188,13 @@ class RotationBasedProjector:
 
             m = self.num_r // 2
 
-            tmp_img = np.tile(profile, (2 * m + self.num_r, 1))
+            tmp_img = np.tile(profile, (self.num_r, 1))
             back_imgs[i, ...] = ndi.rotate(
                 tmp_img,
                 (180.0 / np.pi) * self._phis[i] - 90,
                 reshape=False,
-                order=3,
-                prefilter=True,
-            )[m:-m, :]
+                order=1,
+                prefilter=False,
+            )
 
         return back_imgs
