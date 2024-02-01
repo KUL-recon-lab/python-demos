@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 from scipy.ndimage import gaussian_filter
 from utils import RadonDisk, RadonObjectSequence, RotationBasedProjector
 
@@ -27,8 +28,7 @@ disk4 = RadonDisk(0.1)
 disk4.amplitude = 1.0
 disk4.x1_offset = -0.7
 
-# radon_object = RadonObjectSequence([disk0, disk1, disk2, disk3, disk4])
-radon_object = RadonObjectSequence([disk0])
+radon_object = RadonObjectSequence([disk0, disk1, disk2, disk3, disk4])
 
 # %%
 # setup r and phi coordinates
@@ -42,7 +42,7 @@ X0hr, X1hr = np.meshgrid(x, x, indexing="ij")
 
 # %%
 # analytic calculation of the randon transform
-sens_sino = 3000 * np.exp(-disk0.radon_transform(R, PHI))
+sens_sino = 197 * np.exp(-disk0.radon_transform(R, PHI))
 noise_free_sino = gaussian_filter(
     sens_sino * radon_object.radon_transform(R, PHI), (0, 1.2)
 )
@@ -81,9 +81,9 @@ filtered_back_proj = filtered_back_projs.mean(axis=0)
 proj.filter = None
 
 sig_res = 0
-num_iter = 2
+num_iter = 200
 
-x_mlem = np.ones(X0.shape, dtype=float)
+x_mlem = 0.05 * np.ones(X0.shape, dtype=float)
 sens_img = proj.backproject(gaussian_filter(sens_sino, (0, sig_res))).sum(axis=0)
 
 
@@ -114,18 +114,50 @@ for i in range(num_iter):
 
 
 # %%
+def _update_animation(n):
+    i = n // 5
+    k = n % 5
 
-i = num_iter - 1
+    if k == 0:
+        im10.set_data(x_mlems[i, ...].T)
+    elif k == 1:
+        im11.set_data(exps[i, ...])
+    elif k == 2:
+        im02.set_data(ratios[i, ...])
+    elif k == 3:
+        im12.set_data(ratio_backs[i, ...].T)
+    elif k == 4:
+        im03.set_data(update_imgs[i, ...].T)
 
-fig, ax = plt.subplots(2, 4, figsize=(16, 8), tight_layout=True)
+    ax[1, 0].set_title(f"$x$ it:{i+1:03}")
+    ax[1, 1].set_title(f"$Ax + s$ it:{i+1:03}")
+    ax[0, 2].set_title(f"$y / (Ax + s)$ it:{i+1:03}")
+    ax[1, 2].set_title(f"$A^T (y / (Ax + s))$ it:{i+1:03}")
+    ax[0, 3].set_title(f"$A^T (y / (Ax + s)) / A^T 1$ it:{i+1:03}")
 
-ax[0, 1].imshow(emis_sino, cmap="Greys", origin="lower")
-ax[1, 0].imshow(x_mlems[i, ...].T, cmap="Greys", origin="lower")
-ax[1, 1].imshow(exps[i, ...], cmap="Greys", origin="lower")
-ax[0, 2].imshow(ratios[i, ...], cmap="Greys", origin="lower")
-ax[1, 2].imshow(ratio_backs[i, ...].T, cmap="Greys", origin="lower")
-ax[0, 3].imshow(update_imgs[i, ...].T, cmap="Greys", origin="lower")
-ax[1, 3].imshow(sens_img.T, cmap="Greys", origin="lower")
+
+# %%
+
+vmax = gaussian_filter(x_mlem, 1.2).max()
+
+its = [5, 10, 20, 50, 100, 200]
+
+fig, ax = plt.subplots(2, 6, figsize=(18, 6), tight_layout=True)
+
+for i, it in enumerate(its):
+    ax[0, i].imshow(
+        x_mlems[it - 1, ...].T, cmap="Greys", origin="lower", vmin=0, vmax=vmax
+    )
+    ax[1, i].imshow(
+        gaussian_filter(x_mlems[it - 1, ...].T, 1.2),
+        cmap="Greys",
+        origin="lower",
+        vmin=0,
+        vmax=vmax,
+    )
+
+    ax[0, i].set_title(f"MLEM {it:03} it.", fontsize="small")
+    ax[1, i].set_title(f"smoothed MLEM {it:03} it.", fontsize="small")
 
 for axx in ax.ravel():
     axx.set_axis_off()
@@ -133,10 +165,54 @@ for axx in ax.ravel():
 fig.show()
 
 # %%
-x = radon_object.values(X0, X1)
-y1 = proj.forwardproject(x)
-y2 = radon_object.radon_transform(R, PHI)
 
+# i = 0
+#
+# fig, ax = plt.subplots(2, 4, figsize=(16, 8), tight_layout=True)
+#
+# im01 = ax[0, 1].imshow(emis_sino, cmap="Greys", origin="lower")
+# im10 = ax[1, 0].imshow(
+#    x_mlems[i, ...].T, cmap="Greys", origin="lower", vmin=0, vmax=x_mlem.max()
+# )
+# im11 = ax[1, 1].imshow(
+#    exps[i, ...], cmap="Greys", origin="lower", vmin=0, vmax=emis_sino.max()
+# )
+# im02 = ax[0, 2].imshow(ratios[i, ...], cmap="Greys", origin="lower", vmin=0.5, vmax=1.5)
+# im12 = ax[1, 2].imshow(
+#    ratio_backs[i, ...].T,
+#    cmap="Greys",
+#    origin="lower",
+#    vmin=0,
+#    vmax=sens_img.max(),
+# )
+# im03 = ax[0, 3].imshow(
+#    update_imgs[i, ...].T, cmap="Greys", origin="lower", vmin=0.5, vmax=1.5
+# )
+# im13 = ax[1, 3].imshow(sens_img.T, cmap="Greys", origin="lower")
+#
+# for axx in ax.ravel():
+#    axx.set_axis_off()
+#
+# ax[0, 1].set_title("emission sinogram y")
+# ax[1, 0].set_title(f"$x$ it:{i+1:03}")
+# ax[1, 1].set_title(f"$Ax + s$ it:{i+1:03}")
+# ax[0, 2].set_title(f"$y / (Ax + s)$ it:{i+1:03}")
+# ax[1, 2].set_title(f"$A^T (y / (Ax + s))$ it:{i+1:03}")
+# ax[0, 3].set_title(f"$A^T (y / (Ax + s)) / A^T 1 it:{i+1:03}$")
+# ax[1, 3].set_title(f"$A^T 1$")
+#
+## create animation
+# ani = animation.FuncAnimation(
+#    fig, _update_animation, num_iter * 5, interval=5, blit=False, repeat=False
+# )
+#
+## save animation to gif
+# ani.save("mlem_animation.mp4", writer=animation.FFMpegWriter(fps=10))
+#
+#
+# fig.show()
+
+# %%
 ## %%
 ## visualize images
 # fig, ax = plt.subplots(2, 3, figsize=(12, 8), tight_layout=True)
@@ -196,4 +272,3 @@ y2 = radon_object.radon_transform(R, PHI)
 # ax[1, 2].set_title("smoothed MLEM 100 iterations")
 #
 # fig.show()
-#

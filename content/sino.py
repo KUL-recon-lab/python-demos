@@ -136,6 +136,8 @@ img2 = ax2.imshow(
     tmp_sino,
     cmap="Greys",
     extent=[r.min(), r.max(), phi.min(), phi.max()],
+    vmin=0,
+    vmax=sino.max(),
     origin="lower",
 )
 

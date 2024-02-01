@@ -9,6 +9,26 @@ import matplotlib.transforms as mtransforms
 from utils import RadonDisk, RadonObjectSequence, RotationBasedProjector
 
 # %%
+# choose number of radial elements, number of views and angular coverage
+num_rad = 201
+phi_max = np.pi
+num_phi = int(0.5 * num_rad * np.pi * (phi_max / np.pi)) + 1
+
+num_phi = num_phi // 1
+
+r = np.linspace(-3.1, 3.1, num_rad)
+phi = np.linspace(0, phi_max, num_phi, endpoint=False)
+PHI, R = np.meshgrid(phi, r, indexing="ij")
+x = np.linspace(r.min(), r.max(), 1001)
+X0, X1 = np.meshgrid(r, r, indexing="ij")
+X0hr, X1hr = np.meshgrid(x, x, indexing="ij")
+
+print(f"num rad:   {num_rad}")
+print(f"phi max:   {180*phi_max/np.pi:.2f} deg")
+print(f"delta phi: {180*(phi[1]-phi[0])/np.pi:.2f} deg")
+
+
+# %%
 # define an object with known radon transform
 disk0 = RadonDisk(1.2)
 disk0.amplitude = 1.0
@@ -33,43 +53,32 @@ disk4.x1_offset = -0.7
 radon_object = RadonObjectSequence([disk0, disk1, disk2, disk3, disk4])
 
 # %%
-# setup r and phi coordinates
-r = np.linspace(-3.1, 3.1, 151)
-num_phi = int(0.5 * r.shape[0] * np.pi) + 1
-phi = np.linspace(0, 1 * np.pi, num_phi, endpoint=False)
-PHI, R = np.meshgrid(phi, r, indexing="ij")
-x = np.linspace(r.min(), r.max(), 351)
-X0, X1 = np.meshgrid(r, r, indexing="ij")
-X0hr, X1hr = np.meshgrid(x, x, indexing="ij")
-
-# %%
 # analytic calculation of the randon transform
 sino = radon_object.radon_transform(R, PHI)
-emis_sino = sino.copy()
 
 # %%
 # add Poisson noise
-weights = np.exp(-disk0.radon_transform(R, PHI))
+sens_sino = 197 * np.exp(-disk0.radon_transform(R, PHI))
 
-sino = 30000 * weights * sino
-contam = np.full(sino.shape, 0.1 * sino.mean())
+noise_free_sino = sens_sino * sino
+contam = np.full(noise_free_sino.shape, 0.1 * noise_free_sino.mean())
 
-sino = np.random.poisson(sino + contam).astype(float)
-emis_sino = sino.copy()
+# emis_sino = np.random.poisson(noise_free_sino + contam).astype(float)
+emis_sino = noise_free_sino.copy()
 
 # pre-correct sinogram
-sino = (sino - contam) / weights
+pre_corrected_sino = (emis_sino - contam) / sens_sino
 
-print(f"counts: {(sino.sum() / 1e6):.1f} million")
+# print(f"counts: {(emis_sino.sum() / 1e6):.1f} million")
 
-# %%
-# simulate "dead pixel" in detector
-# sino[:, ::16] = 0
+## %%
+## simulate "dead pixel" in detector
+# pre_corrected_sino[:, ::16] = 0
 
 # %%
 # back projection
 proj = RotationBasedProjector(phi, r)
-back_projs = proj.backproject(sino)
+back_projs = proj.backproject(pre_corrected_sino)
 back_proj = back_projs.mean(axis=0)
 
 # %%
@@ -87,7 +96,7 @@ f[(r_shift % 2) == 0] = 0
 f[r_shift == 0] = 0.25
 
 proj.filter = f
-filtered_back_projs = proj.backproject(sino)
+filtered_back_projs = proj.backproject(pre_corrected_sino)
 filtered_back_proj = filtered_back_projs.mean(axis=0)
 
 # %%
@@ -100,7 +109,10 @@ ax[0].imshow(
     origin="lower",
 )
 ax[1].imshow(
-    sino, cmap="Greys", extent=[r.min(), r.max(), phi.min(), phi.max()], origin="lower"
+    pre_corrected_sino,
+    cmap="Greys",
+    extent=[r.min(), r.max(), phi.min(), phi.max()],
+    origin="lower",
 )
 ax[2].imshow(
     back_proj.T,
@@ -135,8 +147,8 @@ fig.show()
 
 # %%
 def _update_animation(i):
-    p1.set_ydata(sino[i, :])
-    p2.set_ydata(np.convolve(sino[i, :], f, mode="same"))
+    p1.set_ydata(pre_corrected_sino[i, :])
+    p2.set_ydata(np.convolve(pre_corrected_sino[i, :], f, mode="same"))
 
     img3.set_data(back_projs[i, ...].T)
     img4.set_data(filtered_back_projs[i, ...].T)
@@ -201,11 +213,11 @@ ann = []
 
 ss = np.linspace(-1.5 * disk0.radius, 1.5 * disk0.radius, 9)
 
-p1 = ax1.plot(r, sino[i, :], color="k")[0]
-ax1.set_ylim(sino.min(), sino.max())
+p1 = ax1.plot(r, pre_corrected_sino[i, :], color="k")[0]
+ax1.set_ylim(pre_corrected_sino.min(), pre_corrected_sino.max())
 ax1.grid(ls=":")
 
-p2 = ax2.plot(r, np.convolve(sino[i, :], f, mode="same"), color="k")[0]
+p2 = ax2.plot(r, np.convolve(pre_corrected_sino[i, :], f, mode="same"), color="k")[0]
 ax2.set_ylim(filtered_back_projs.min(), filtered_back_projs.max())
 ax2.grid(ls=":")
 
@@ -242,12 +254,16 @@ img3 = ax3.imshow(
     back_projs[i, ...].T,
     cmap="Greys",
     extent=[r.min(), r.max(), r.min(), r.max()],
+    vmin=0,
+    vmax=back_projs.max(),
     origin="lower",
 )
 img4 = ax4.imshow(
     filtered_back_projs[i, ...].T,
     cmap="Greys",
     extent=[r.min(), r.max(), r.min(), r.max()],
+    vmin=filtered_back_projs.min(),
+    vmax=filtered_back_projs.max(),
     origin="lower",
 )
 img5 = ax5.imshow(
@@ -256,7 +272,7 @@ img5 = ax5.imshow(
     extent=[r.min(), r.max(), r.min(), r.max()],
     origin="lower",
     vmin=back_proj.min(),
-    vmax=back_proj.max(),
+    vmax=1.05 * back_proj.max(),
 )
 img6 = ax6.imshow(
     filtered_back_projs[: (i + 1), ...].mean(axis=0).T,
@@ -264,7 +280,7 @@ img6 = ax6.imshow(
     extent=[r.min(), r.max(), r.min(), r.max()],
     origin="lower",
     vmin=filtered_back_proj.min(),
-    vmax=filtered_back_proj.max(),
+    vmax=1.05 * filtered_back_proj.max(),
 )
 
 ax0.set_xlabel(r"$x_0$")
@@ -302,4 +318,4 @@ ax6.set_title(f"mean of first {(i+1):03} filtered back projections", fontsize="m
 ## save animation to gif
 # ani.save("fbp_animation.mp4", writer=animation.FFMpegWriter(fps=20))
 
-fig2.show()
+# fig2.show()
