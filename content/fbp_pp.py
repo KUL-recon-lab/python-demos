@@ -4,6 +4,7 @@ import array_api_compat.numpy as np
 import matplotlib.pyplot as plt
 import parallelproj
 
+from scipy.ndimage import gaussian_filter
 from array_api_compat import to_device
 from utils import RadonDisk, RadonObjectSequence
 
@@ -16,13 +17,13 @@ add_noise = True
 total_counts = 1e7
 num_iter = 50
 mu = 0.1
+sino_res = 1.0
 
 # %%
 # choose number of radial elements, number of views and angular coverage
 num_rad = 201
 phi_max = xp.pi
 num_phi = int(0.5 * num_rad * xp.pi * (phi_max / xp.pi)) + 1
-
 num_phi = num_phi // 1
 
 r = xp.linspace(-30, 30, num_rad, device=dev, dtype=xp.float32)
@@ -68,10 +69,23 @@ sino = radon_object.radon_transform(R, PHI)
 # %%
 # add Poisson noise
 sens_sino = xp.exp(-mu * disk0.radon_transform(R, PHI))
-
 contam = xp.full(sino.shape, 0.1 * xp.mean(sens_sino * sino), device=dev)
 
-emis_sino = sens_sino * sino + contam
+emis_sino = sens_sino * sino
+
+if sino_res > 0:
+    for i in range(num_phi):
+        emis_sino[:, i] = xp.asarray(
+            gaussian_filter(
+                np.asarray(to_device(emis_sino[:, i], "cpu")),
+                sino_res,
+            ),
+            device=dev,
+        )
+
+
+emis_sino = emis_sino + contam
+
 count_fac = total_counts / float(xp.sum(emis_sino))
 
 emis_sino *= count_fac
