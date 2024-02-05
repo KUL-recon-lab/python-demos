@@ -1,14 +1,17 @@
-import numpy as np
-import scipy.ndimage as ndi
 from collections.abc import Sequence
-
 import abc
+from numpy.array_api._array_object import Array
+
+from types import ModuleType
 
 
 class RadonObject(abc.ABC):
     """abstract base class for objects with known radon transform"""
 
-    def __init__(self) -> None:
+    def __init__(self, xp: ModuleType, dev: str) -> None:
+        self._xp = xp
+        self._dev = dev
+
         self._x0_offset: float = 0.0
         self._x1_offset: float = 0.0
         self._s0: float = 1.0
@@ -16,12 +19,20 @@ class RadonObject(abc.ABC):
         self._amplitude: float = 1.0
 
     @abc.abstractmethod
-    def _centered_radon_transform(self, r: np.ndarray, phi: np.ndarray) -> np.ndarray:
+    def _centered_radon_transform(self, r: Array, phi: Array) -> Array:
         pass
 
     @abc.abstractmethod
-    def _centered_values(self, x0: np.ndarray, x1: np.ndarray) -> np.ndarray:
+    def _centered_values(self, x0: Array, x1: Array) -> Array:
         pass
+
+    @property
+    def xp(self) -> ModuleType:
+        return self._xp
+
+    @property
+    def dev(self) -> str:
+        return self._dev
 
     @property
     def x0_offset(self) -> float:
@@ -64,16 +75,19 @@ class RadonObject(abc.ABC):
         self._amplitude = value
 
     def radon_transform(self, s, phi) -> float:
-        s_prime = s / np.sqrt(
-            self._s0**2 * np.cos(phi) ** 2 + self._s1**2 * np.sin(phi) ** 2
+        s_prime = s / self.xp.sqrt(
+            self._s0**2 * self.xp.cos(phi) ** 2 + self._s1**2 * self.xp.sin(phi) ** 2
         )
-        phi_prime = np.arctan2(self._s0 * np.sin(phi), self._s1 * np.cos(phi))
+        phi_prime = self.xp.atan2(
+            self._s0 * self.xp.sin(phi), self._s1 * self.xp.cos(phi)
+        )
 
         fac = (
             self._s0
             * self._s1
-            / np.sqrt(
-                self._s0**2 * np.cos(phi) ** 2 + self._s1**2 * np.sin(phi) ** 2
+            / self.xp.sqrt(
+                self._s0**2 * self.xp.cos(phi) ** 2
+                + self._s1**2 * self.xp.sin(phi) ** 2
             )
         )
 
@@ -82,13 +96,13 @@ class RadonObject(abc.ABC):
             * fac
             * self._centered_radon_transform(
                 s_prime
-                - self._x0_offset * np.cos(phi_prime)
-                - self._x1_offset * np.sin(phi_prime),
+                - self._x0_offset * self.xp.cos(phi_prime)
+                - self._x1_offset * self.xp.sin(phi_prime),
                 phi_prime,
             )
         )
 
-    def values(self, x0: np.ndarray, x1: np.ndarray) -> np.ndarray:
+    def values(self, x0: Array, x1: Array) -> Array:
         return self._amplitude * self._centered_values(
             x0 / self._s0 - self._x0_offset, x1 / self._s1 - self._x1_offset
         )
@@ -108,27 +122,31 @@ class RadonObjectSequence(Sequence[RadonObject]):
     def radon_transform(self, r, phi) -> float:
         return sum([x.radon_transform(r, phi) for x in self])
 
-    def values(self, x0: np.ndarray, x1: np.ndarray) -> np.ndarray:
+    def values(self, x0: Array, x1: Array) -> Array:
         return sum([x.values(x0, x1) for x in self])
 
 
 class RadonDisk(RadonObject):
     """2D disk with known radon transform"""
 
-    def __init__(self, radius: float) -> None:
-        super().__init__()
+    def __init__(self, xp: ModuleType, dev: str, radius: float) -> None:
+        super().__init__(xp, dev)
         self._radius: float = radius
 
-    def _centered_radon_transform(self, r: np.ndarray, phi: np.ndarray) -> np.ndarray:
-        mask = np.where(np.abs(r) <= self._radius)
-        rt = np.zeros_like(r)
-
-        rt[mask] = 2 * np.sqrt(self._radius**2 - r[mask] ** 2)
+    def _centered_radon_transform(self, r: Array, phi: Array) -> Array:
+        rt = self.xp.zeros_like(r)
+        rt[self.xp.abs(r) <= self._radius] = 2 * self.xp.sqrt(
+            self._radius**2 - r[self.xp.abs(r) <= self._radius] ** 2
+        )
 
         return rt
 
-    def _centered_values(self, x0: np.ndarray, x1: np.ndarray) -> np.ndarray:
-        return np.where(x0**2 + x1**2 <= self._radius**2, 1.0, 0.0)
+    def _centered_values(self, x0: Array, x1: Array) -> Array:
+        return self.xp.where(
+            x0**2 + x1**2 <= self._radius**2,
+            self.xp.ones_like(x0),
+            self.xp.zeros_like(x0),
+        )
 
     @property
     def radius(self) -> float:
@@ -137,74 +155,3 @@ class RadonDisk(RadonObject):
     @radius.setter
     def radius(self, value: float) -> None:
         self._radius = value
-
-
-class RotationBasedProjector:
-    def __init__(self, phis: np.ndarray, r: np.ndarray) -> None:
-        self._phis: np.ndarray = phis
-        self._r: np.ndarray = r
-        self._filter: np.ndarray | None = None
-
-    @property
-    def phis(self) -> np.ndarray:
-        return self._phis
-
-    @phis.setter
-    def phis(self, value: np.ndarray) -> None:
-        self._phis = value
-
-    @property
-    def r(self) -> np.ndarray:
-        return self._r
-
-    @r.setter
-    def r(self, value: np.ndarray) -> None:
-        self._r = value
-
-    @property
-    def num_r(self) -> int:
-        return self._r.shape[0]
-
-    @property
-    def num_phi(self) -> int:
-        return self._phis.shape[0]
-
-    @property
-    def filter(self) -> np.ndarray | None:
-        return self._filter
-
-    @filter.setter
-    def filter(self, value: np.ndarray | None) -> None:
-        self._filter = value
-
-    def forwardproject(self, image: np.ndarray) -> np.ndarray:
-        sinogram = np.zeros((self.num_phi, self.num_r), dtype=float)
-
-        for i, phi in enumerate(self._phis):
-            sinogram[i, :] = ndi.rotate(
-                image,
-                -((180.0 / np.pi) * phi - 90),
-                reshape=False,
-                order=1,
-                prefilter=False,
-            ).sum(axis=0)
-
-        return sinogram
-
-    def backproject(self, sinogram: np.ndarray) -> np.ndarray:
-        back_imgs = np.zeros((self.num_phi, self.num_r, self.num_r), dtype=float)
-
-        for i, profile in enumerate(sinogram):
-            if self.filter is not None:
-                profile = np.convolve(profile, self.filter, mode="same")
-
-            tmp_img = np.tile(profile, (self.num_r, 1))
-            back_imgs[i, ...] = ndi.rotate(
-                tmp_img,
-                (180.0 / np.pi) * self._phis[i] - 90,
-                reshape=False,
-                order=1,
-                prefilter=False,
-            )
-
-        return back_imgs

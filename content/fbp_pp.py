@@ -1,50 +1,58 @@
 from __future__ import annotations
 
-import numpy as np
+import array_api_compat.numpy as np
 import matplotlib.pyplot as plt
 import parallelproj
 
-from utils import RadonDisk, RadonObjectSequence, RotationBasedProjector
+from array_api_compat import to_device
+from utils import RadonDisk, RadonObjectSequence
+
+# %%
+import numpy.array_api as xp
+
+# import array_api_compat.torch as xp
+
+dev = "cpu"
 
 # %%
 # choose number of radial elements, number of views and angular coverage
 num_rad = 201
-phi_max = np.pi
-num_phi = int(0.5 * num_rad * np.pi * (phi_max / np.pi)) + 1
+phi_max = xp.pi
+num_phi = int(0.5 * num_rad * xp.pi * (phi_max / xp.pi)) + 1
 
 num_phi = num_phi // 1
 
-r = np.linspace(-3.1, 3.1, num_rad)
-phi = np.linspace(0, phi_max, num_phi, endpoint=False)
-R, PHI = np.meshgrid(r, phi, indexing="ij")
-x = np.linspace(r.min(), r.max(), 1001)
-X0, X1 = np.meshgrid(r, r, indexing="ij")
-X0hr, X1hr = np.meshgrid(x, x, indexing="ij")
+r = xp.linspace(-3.1, 3.1, num_rad, device=dev)
+phi = xp.linspace(0, phi_max, num_phi, endpoint=False, device=dev)
+R, PHI = xp.meshgrid(r, phi, indexing="ij")
+X0, X1 = xp.meshgrid(r, r, indexing="ij")
+x = xp.linspace(float(xp.min(r)), float(xp.max(r)), 1001, device=dev)
+X0hr, X1hr = xp.meshgrid(x, x, indexing="ij")
 
 print(f"num rad:   {num_rad}")
-print(f"phi max:   {180*phi_max/np.pi:.2f} deg")
-print(f"delta phi: {180*(phi[1]-phi[0])/np.pi:.2f} deg")
+print(f"phi max:   {180*phi_max/xp.pi:.2f} deg")
+print(f"delta phi: {180*float(phi[1]-phi[0])/xp.pi:.2f} deg")
 
 
 # %%
 # define an object with known radon transform
-disk0 = RadonDisk(1.2)
+disk0 = RadonDisk(xp, dev, 1.2)
 disk0.amplitude = 1.0
 disk0.s0 = 2.0
 
-disk1 = RadonDisk(0.3)
+disk1 = RadonDisk(xp, dev, 0.3)
 disk1.amplitude = 0.5
 disk1.x1_offset = 0.7
 
-disk2 = RadonDisk(0.2)
+disk2 = RadonDisk(xp, dev, 0.2)
 disk2.amplitude = -1
 disk2.x0_offset = -1.5
 
-disk3 = RadonDisk(0.14)
+disk3 = RadonDisk(xp, dev, 0.14)
 disk3.amplitude = -0.5
 disk3.x1_offset = -0.7
 
-disk4 = RadonDisk(0.1)
+disk4 = RadonDisk(xp, dev, 0.1)
 disk4.amplitude = 1.0
 disk4.x1_offset = -0.7
 
@@ -56,13 +64,18 @@ sino = radon_object.radon_transform(R, PHI)
 
 # %%
 # add Poisson noise
-sens_sino = 197 * np.exp(-disk0.radon_transform(R, PHI))
+sens_sino = 19700 * xp.exp(-disk0.radon_transform(R, PHI))
 
 noise_free_sino = sens_sino * sino
-contam = np.full(noise_free_sino.shape, 0.1 * noise_free_sino.mean())
+contam = xp.full(noise_free_sino.shape, 0.1 * xp.mean(noise_free_sino), device=dev)
 
-# emis_sino = np.random.poisson(noise_free_sino + contam).astype(float)
-emis_sino = noise_free_sino.copy()
+emis_sino = xp.asarray(
+    np.random.poisson(np.asarray(to_device(noise_free_sino + contam, "cpu"))).astype(
+        float
+    ),
+    device=dev,
+)
+# emis_sino = noise_free_sino.copy()
 
 # pre-correct sinogram
 pre_corrected_sino = (emis_sino - contam) / sens_sino
@@ -70,24 +83,26 @@ pre_corrected_sino = (emis_sino - contam) / sens_sino
 # %%
 # filtered back projection
 
-# see https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4341983/
-# for discrete implementation of ramp filter
-
+# setup a discrete ramp filter
 n_filter = r.shape[0]
-
-r_shift = np.arange(n_filter) - n_filter // 2
-f = np.zeros(n_filter)
-f[r_shift != 0] = -1 / (np.pi**2 * r_shift[r_shift != 0] ** 2)
+r_shift = xp.arange(n_filter, device=dev, dtype=xp.float64) - n_filter // 2
+f = xp.zeros(n_filter, device=dev)
+f[r_shift != 0] = -1 / (xp.pi**2 * r_shift[r_shift != 0] ** 2)
 f[(r_shift % 2) == 0] = 0
 f[r_shift == 0] = 0.25
 
 # %%
 # ramp filter the sinogram in the radial direction
-filtered_pre_corrected_sino = pre_corrected_sino.copy()
+filtered_pre_corrected_sino = 1.0 * pre_corrected_sino
 
 for i in range(num_phi):
-    filtered_pre_corrected_sino[:, i] = np.convolve(
-        filtered_pre_corrected_sino[:, i], f, mode="same"
+    filtered_pre_corrected_sino[:, i] = xp.asarray(
+        np.convolve(
+            np.asarray(to_device(filtered_pre_corrected_sino[:, i], "cpu")),
+            f,
+            mode="same",
+        ),
+        device=dev,
     )
 
 # %%
@@ -97,43 +112,45 @@ proj = parallelproj.ParallelViewProjector2D(
     (num_rad, num_rad),
     r,
     -phi,
-    2 * r.max(),
-    (r.min(), r.min()),
-    (r[1] - r[0], r[1] - r[0]),
+    2 * float(xp.max(r)),
+    (float(xp.min(r)), float(xp.min(r))),
+    (float(r[1] - r[0]), float(r[1] - r[0])),
 )
 
-back_proj = proj.adjoint(sino)
+back_proj = proj.adjoint(pre_corrected_sino)
 filtered_back_proj = proj.adjoint(filtered_pre_corrected_sino)
 
 
 # %%
 # visualize images
+ext_img = [float(xp.min(r)), float(xp.max(r)), float(xp.min(r)), float(xp.max(r))]
+ext_sino = [float(xp.min(r)), float(xp.max(r)), float(xp.min(phi)), float(xp.max(phi))]
+
 fig, ax = plt.subplots(1, 4, figsize=(16, 4), tight_layout=True)
 ax[0].imshow(
-    radon_object.values(X0hr, X1hr).T,
+    np.asarray(to_device(radon_object.values(X0hr, X1hr).T, "cpu")),
     cmap="Greys",
-    extent=[r.min(), r.max(), r.min(), r.max()],
+    extent=ext_img,
     origin="lower",
 )
 ax[1].imshow(
-    pre_corrected_sino.T,
+    np.asarray(to_device(pre_corrected_sino.T, "cpu")),
     cmap="Greys",
-    extent=[r.min(), r.max(), phi.min(), phi.max()],
+    extent=ext_sino,
     origin="lower",
 )
 ax[2].imshow(
-    back_proj.T,
+    np.asarray(to_device(back_proj.T, "cpu")),
     cmap="Greys",
-    extent=[r.min(), r.max(), r.min(), r.max()],
+    extent=ext_img,
     origin="lower",
 )
 ax[3].imshow(
-    filtered_back_proj.T,
+    np.asarray(to_device(filtered_back_proj.T, "cpu")),
     cmap="Greys",
-    extent=[r.min(), r.max(), r.min(), r.max()],
+    extent=ext_img,
     origin="lower",
 )
-
 
 ax[0].set_xlabel(r"$x_0$")
 ax[0].set_ylabel(r"$x_1$")
