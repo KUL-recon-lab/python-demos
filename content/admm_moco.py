@@ -11,10 +11,12 @@ from scipy.ndimage import gaussian_filter1d
 
 # %%
 # input parameters
+np.random.seed(2)
+
 n = 201
-noise_level = 0.2
+noise_level = 0.1
 rho = 1e-1
-num_iter = 1000
+num_iter = 100
 
 # true shifts for the 3 gates
 s1 = (n // 10) % n
@@ -23,9 +25,9 @@ s3 = 0
 
 # errors for the shifts during recon
 # 0 means use of true shifts during recon
-s1_error = 0 + n // 16  # set to -s1 for no shift modeling during recon
-s2_error = 0 + n // 16  # set to -s2 for no shift modeling during recon
-s3_error = 0  # set to -s3 for no shift modeling during recon
+s1_error = 0  # + n // 16  # set to -s1 for no shift modeling during recon
+s2_error = 0  # + n // 16  # set to -s2 for no shift modeling during recon
+s3_error = 0  #  # set to -s3 for no shift modeling during recon
 
 # x coordinate
 x = np.linspace(-n // 2, n // 2, n)
@@ -34,9 +36,9 @@ x = np.linspace(-n // 2, n // 2, n)
 diag_A = 1.2 * (x.max() - np.abs(x)) / x.max() + 0.1
 
 # sigma for Gaussian filter to emulate regularization
-sig_lam = 3.0
+sig_lam = 0.0
 
-motion_update_period = 1
+motion_update_period = 100000000
 # %%
 
 # setup the true object
@@ -66,8 +68,10 @@ sr2s = [sr2]
 sr2s = [sr3]
 
 # init variables
-# lam = (np.roll(d1, -sr1) + np.roll(d2, -sr2) + np.roll(d3, -sr3)) / 3
-lam = np.zeros(n)
+lam = (np.roll(d1, -sr1) + np.roll(d2, -sr2) + np.roll(d3, -sr3)) / 3
+# lam = np.zeros(n)
+# lam = f
+
 u1 = np.zeros(n)
 u2 = np.zeros(n)
 u3 = np.zeros(n)
@@ -86,9 +90,9 @@ for i in range(num_iter):
     # sub-problem 2
     lam = (np.roll(z1 + u1, -sr1) + np.roll(z2 + u2, -sr2) + np.roll(z3 + u3, -sr3)) / 3
 
-    ### HACK to emulate regularization on lambda -> not at all correct!
-    if sig_lam > 0:
-        lam = gaussian_filter1d(lam, 5.0, mode="wrap")
+    #### HACK to emulate regularization on lambda -> not at all correct!
+    # if sig_lam > 0:
+    #    lam = gaussian_filter1d(lam, 5.0, mode="wrap")
 
     # update of u
     u1 = u1 + z1 - np.roll(lam, sr1)
@@ -156,11 +160,11 @@ ax[0, 0].set_ylim(ymin, ymax)
 
 # plot the estimated shifts
 ax[0, 1].plot(sr1s, label="shift 1")
-ax[0, 1].plot(sr2s, label="shift 1")
+ax[0, 1].plot(sr2s, label="shift 2")
 
 imin = min(10, n)
 ax[0, 2].plot(sr1s[:imin], label="shift 1")
-ax[0, 2].plot(sr2s[:imin], label="shift 1")
+ax[0, 2].plot(sr2s[:imin], label="shift 2")
 
 for axx in ax[0, 1:]:
     axx.legend()
