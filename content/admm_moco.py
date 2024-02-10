@@ -15,6 +15,7 @@ to the individual reconstructions or close to the average
 # %%
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.optimize import fmin_powell
 
 
 def cost_function(
@@ -42,8 +43,8 @@ def cost_function(
 np.random.seed(1)
 
 n = 201
-noise_level = 0.1
-num_iter = 1000
+noise_level = 0.2
+num_iter = 200
 
 # very big rho means that information between z is heavily shared (z more lambda like)
 # -> not good when we want to align the z's to get a motion update
@@ -71,7 +72,7 @@ x = np.linspace(-n // 2, n // 2, n)
 diag_A = 1.2 * (x.max() - np.abs(x)) / x.max() + 0.1
 
 # weight of quad. reg.
-beta = 1e1
+beta = 3e0
 
 motion_update_period = 1
 # %%
@@ -181,10 +182,23 @@ for i in range(num_iter):
         sr2s.append(sr2)
 
 # %%
+# calculate a reference recon using the powell optimizer
+
+ref_recon = fmin_powell(
+    cost_function,
+    lam,
+    args=(diag_A, [s1, s2, s3], [d1, d2, d3], beta),
+    xtol=1e-5,
+    ftol=1e-5,
+)
+ref_cost = cost_function(ref_recon, diag_A, [s1, s2, s3], [d1, d2, d3], beta)
+
+# %%
 
 fig, ax = plt.subplots(4, 3, figsize=(16, 8), tight_layout=True)
 ax[0, 0].plot(x, f, "k", label="ground truth")
 ax[0, 0].plot(x, lam, "r", label=r"$\lambda$")
+ax[0, 0].plot(x, ref_recon, "g--", label="opt.sol.(Pow)")
 ax[0, 0].set_title(f"beta={beta:.1e}, rho={rho:.1e}, n={num_iter}", fontsize="medium")
 
 ax[1, 0].plot(x, d1, "k", label=r"$d_1$")
@@ -247,9 +261,12 @@ fig.show()
 # %%
 # plot the cost function
 fig2, ax2 = plt.subplots(tight_layout=True)
-ax2.semilogx(np.arange(1, num_iter + 1), cost)
+ax2.semilogx(np.arange(1, num_iter + 1), cost, "r", label="cost(lambda)")
+ax2.axhline(ref_cost, color="g", ls="--", label="optimal cost (Powell)")
 ax2.set_title("cost function")
 ax2.grid(ls=":")
 fig2.show()
 
-print(f"rho: {rho:.1e}, num_iter: {num_iter}, cost: {cost[-1]:.4e}")
+print(
+    f"rho: {rho:.1e}, num_iter: {num_iter}, cost: {cost[-1]:.4e}, ref_cost: {ref_cost:.4e}"
+)
