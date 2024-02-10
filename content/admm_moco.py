@@ -47,7 +47,7 @@ noise_level = 0.15
 num_iter = 800
 beta = 1e0  # weight of the quad. prior
 alignment_strategy = (
-    1  # 1: z to z, 2: lam to z, 3: z+u to z+u, 4: lam to z+u, 0: no alignment
+    0  # 1: z to z, 2: lam to z, 3: z+u to z+u, 4: lam to z+u, 0: no alignment
 )
 motion_update_period = 1
 
@@ -58,7 +58,7 @@ use_sub2_approx = False
 # very small row means that the z's stay very close to the ind. recons of the data
 # which is better for motion estimation, but noise gets a problem
 # -> there should be a sweet spot for rho, here this is around 1e-1
-rho = 1e-1
+rho = 1e2
 
 # %%
 
@@ -69,9 +69,9 @@ s3 = 0
 
 # errors for the shifts during recon
 # 0 means use of true shifts during recon
-s1_error = -s1  # 0 + n // 8  # set to -s1 for no shift modeling during recon
-s2_error = -s2  # 0 + n // 16  # set to -s2 for no shift modeling during recon
-s3_error = -s3  # 0  #  # set to -s3 for no shift modeling during recon
+s1_error = 0  # + n // 8  # set to -s1 for no shift modeling during recon
+s2_error = 0  # + n // 16  # set to -s2 for no shift modeling during recon
+s3_error = 0  #  # set to -s3 for no shift modeling during recon
 
 # x coordinate
 x = np.linspace(-n // 2, n // 2, n)
@@ -146,10 +146,9 @@ sr3 = s3 + s3_error
 
 sr1s = [sr1]
 sr2s = [sr2]
-sr2s = [sr3]
+sr3s = [sr3]
 
 # init variables
-# lam = (np.roll(r1, -sr1) + np.roll(r2, -sr2) + np.roll(r3, -sr3)) / 3
 lam = np.zeros(n)
 
 u1 = np.zeros(n)
