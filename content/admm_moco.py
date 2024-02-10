@@ -43,8 +43,11 @@ def cost_function(
 np.random.seed(1)
 
 n = 201
-noise_level = 0.2
-num_iter = 200
+noise_level = 0.15
+num_iter = 400
+beta = 1e0  # weight of the quad. prior
+alignment_strategy = 1  # 1: z to z, 2: lam to z, 3: z+u to z+u, 4: lam to z+u
+motion_update_period = 1
 
 # very big rho means that information between z is heavily shared (z more lambda like)
 # -> not good when we want to align the z's to get a motion update
@@ -53,6 +56,7 @@ num_iter = 200
 # -> there should be a sweet spot for rho, here this is around 1e-1
 rho = 1e-1
 
+# %%
 
 # true shifts for the 3 gates
 s1 = (n // 4) % n
@@ -71,10 +75,6 @@ x = np.linspace(-n // 2, n // 2, n)
 # this can be inverted / transposed easily
 diag_A = 1.2 * (x.max() - np.abs(x)) / x.max() + 0.1
 
-# weight of quad. reg.
-beta = 3e0
-
-motion_update_period = 1
 # %%
 
 # setup the true object
@@ -175,8 +175,28 @@ for i in range(num_iter):
 
     # update the shifts
     if (i + 1) % motion_update_period == 0:
-        sr1 = np.argmin([((np.roll(z3, i) - z1) ** 2).sum() for i in range(n)])
-        sr2 = np.argmin([((np.roll(z3, i) - z2) ** 2).sum() for i in range(n)])
+        if alignment_strategy == 1:
+            sr1 = np.argmin([((np.roll(z3, i) - z1) ** 2).sum() for i in range(n)])
+            sr2 = np.argmin([((np.roll(z3, i) - z2) ** 2).sum() for i in range(n)])
+        elif alignment_strategy == 2:
+            sr1 = np.argmin([((np.roll(lam, i) - z1) ** 2).sum() for i in range(n)])
+            sr2 = np.argmin([((np.roll(lam, i) - z2) ** 2).sum() for i in range(n)])
+        elif alignment_strategy == 3:
+            sr1 = np.argmin(
+                [((np.roll(z3 + u3, i) - (z1 + u1)) ** 2).sum() for i in range(n)]
+            )
+            sr2 = np.argmin(
+                [((np.roll(z3 + u3, i) - (z2 + u2)) ** 2).sum() for i in range(n)]
+            )
+        elif alignment_strategy == 4:
+            sr1 = np.argmin(
+                [((np.roll(lam, i) - (z1 + u1)) ** 2).sum() for i in range(n)]
+            )
+            sr2 = np.argmin(
+                [((np.roll(lam, i) - (z2 + u2)) ** 2).sum() for i in range(n)]
+            )
+        else:
+            raise ValueError("alignment_strategy not valid")
 
         sr1s.append(sr1)
         sr2s.append(sr2)
@@ -199,7 +219,10 @@ fig, ax = plt.subplots(4, 3, figsize=(16, 8), tight_layout=True)
 ax[0, 0].plot(x, f, "k", label="ground truth")
 ax[0, 0].plot(x, lam, "r", label=r"$\lambda$")
 ax[0, 0].plot(x, ref_recon, "g--", label="opt.sol.(Pow)")
-ax[0, 0].set_title(f"beta={beta:.1e}, rho={rho:.1e}, n={num_iter}", fontsize="medium")
+ax[0, 0].set_title(
+    f"beta={beta:.1e}, rho={rho:.1e}, n={num_iter}, as={alignment_strategy}",
+    fontsize="medium",
+)
 
 ax[1, 0].plot(x, d1, "k", label=r"$d_1$")
 ax[1, 0].plot(x, r1, "b", label=r"$r_1$")
