@@ -44,17 +44,19 @@ np.random.seed(1)
 
 n = 201
 noise_level = 0.15
-num_iter = 400
+num_iter = 800
 beta = 1e0  # weight of the quad. prior
 alignment_strategy = 1  # 1: z to z, 2: lam to z, 3: z+u to z+u, 4: lam to z+u
 motion_update_period = 1
+
+use_sub2_approx = False
 
 # very big rho means that information between z is heavily shared (z more lambda like)
 # -> not good when we want to align the z's to get a motion update
 # very small row means that the z's stay very close to the ind. recons of the data
 # which is better for motion estimation, but noise gets a problem
 # -> there should be a sweet spot for rho, here this is around 1e-1
-rho = 1e-1
+rho = 1e-2
 
 # %%
 
@@ -112,7 +114,7 @@ r3 = op_inv @ (diag_A * d3)
 
 
 # %%
-# setup the operator we need to analytically solve subproblem 2
+# setup the operators we need to analytically solve subproblem 2 (with or without approximation)
 # argmin_lam (beta/2) || grad lambda||^2 + \sum_k rho/2 ||S_k lambda - (z_k + u_k)||^2
 
 num_gates = 3
@@ -125,6 +127,12 @@ op2[i, (i + 1) % n] = -beta
 
 op2_inv = np.linalg.inv(op2)
 
+op3 = np.zeros((n, n))
+op3[i, i] = 1 + 2 * beta / rho
+op3[i, (i - 1) % n] = -beta / rho
+op3[i, (i + 1) % n] = -beta / rho
+
+op3_inv = np.linalg.inv(op3)
 
 # %%
 # ADMM recons
@@ -159,11 +167,18 @@ for i in range(num_iter):
     z2 = (diag_A * d2 + rho * e2) / (diag_A**2 + rho)
     z3 = (diag_A * d3 + rho * e3) / (diag_A**2 + rho)
 
-    # sub-problem 2 - analytic solution (possible if there is no regularization on lambda)
-    # lam = (np.roll(z1 + u1, -sr1) + np.roll(z2 + u2, -sr2) + np.roll(z3 + u3, -sr3)) / 3
+    # analytic solution of sub problem 2 - with or without approximation
+    if use_sub2_approx:
+        w = (
+            np.roll(z1 + u1, -sr1) + np.roll(z2 + u2, -sr2) + np.roll(z3 + u3, -sr3)
+        ) / num_gates
+        lam = op3_inv @ w
 
-    v = rho * (np.roll(z1 + u1, -sr1) + np.roll(z2 + u2, -sr2) + np.roll(z3 + u3, -sr3))
-    lam = op2_inv @ v
+    else:
+        v = rho * (
+            np.roll(z1 + u1, -sr1) + np.roll(z2 + u2, -sr2) + np.roll(z3 + u3, -sr3)
+        )
+        lam = op2_inv @ v
 
     # update of u
     u1 = u1 + z1 - np.roll(lam, sr1)
@@ -220,7 +235,7 @@ ax[0, 0].plot(x, f, "k", label="ground truth")
 ax[0, 0].plot(x, lam, "r", label=r"$\lambda$")
 ax[0, 0].plot(x, ref_recon, "g--", label="opt.sol.(Pow)")
 ax[0, 0].set_title(
-    f"beta={beta:.1e}, rho={rho:.1e}, n={num_iter}, as={alignment_strategy}",
+    f"beta={beta:.1e}, rho={rho:.1e}, n={num_iter}, align={alignment_strategy}",
     fontsize="medium",
 )
 
