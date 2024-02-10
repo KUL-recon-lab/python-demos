@@ -46,7 +46,9 @@ n = 201
 noise_level = 0.15
 num_iter = 800
 beta = 1e0  # weight of the quad. prior
-alignment_strategy = 1  # 1: z to z, 2: lam to z, 3: z+u to z+u, 4: lam to z+u
+alignment_strategy = (
+    1  # 1: z to z, 2: lam to z, 3: z+u to z+u, 4: lam to z+u, 0: no alignment
+)
 motion_update_period = 1
 
 use_sub2_approx = False
@@ -56,7 +58,7 @@ use_sub2_approx = False
 # very small row means that the z's stay very close to the ind. recons of the data
 # which is better for motion estimation, but noise gets a problem
 # -> there should be a sweet spot for rho, here this is around 1e-1
-rho = 1e-2
+rho = 1e-1
 
 # %%
 
@@ -190,7 +192,9 @@ for i in range(num_iter):
 
     # update the shifts
     if (i + 1) % motion_update_period == 0:
-        if alignment_strategy == 1:
+        if alignment_strategy == 0:
+            pass
+        elif alignment_strategy == 1:
             sr1 = np.argmin([((np.roll(z3, i) - z1) ** 2).sum() for i in range(n)])
             sr2 = np.argmin([((np.roll(z3, i) - z2) ** 2).sum() for i in range(n)])
         elif alignment_strategy == 2:
@@ -235,7 +239,7 @@ ax[0, 0].plot(x, f, "k", label="ground truth")
 ax[0, 0].plot(x, lam, "r", label=r"$\lambda$")
 ax[0, 0].plot(x, ref_recon, "g--", label="opt.sol.(Pow)")
 ax[0, 0].set_title(
-    f"beta={beta:.1e}, rho={rho:.1e}, n={num_iter}, align={alignment_strategy}",
+    f"rho={rho:.1e}, beta={beta:.1e}, n={num_iter}, align={alignment_strategy}, approx_s2={use_sub2_approx}",
     fontsize="medium",
 )
 
@@ -250,24 +254,14 @@ ax[3, 0].plot(x, d3, "k", label=r"$d_3$")
 ax[3, 0].plot(x, r3, "b", label=r"$r_3$")
 ax[3, 0].plot(x, z3, "r", label=r"$z_3$")
 
-ax[1, 1].plot(x, d1, "k", label=r"$d_1$")
 ax[1, 1].plot(x, r1, "b", label=r"$r_1$")
-ax[1, 1].plot(x, z1 + rho * u1, "r", label=r"$z_1 + \rho u_1$")
-ax[2, 1].plot(x, d2, "k", label=r"$d_2$")
+ax[1, 1].plot(x, z1 + u1, "r", label=r"$z_1 + u_1$")
 ax[2, 1].plot(x, r2, "b", label=r"$r_2$")
-ax[2, 1].plot(x, z2 + rho * u2, "r", label=r"$z_2 + \rho u_2$")
-ax[3, 1].plot(x, d3, "k", label=r"$d_3$")
+ax[2, 1].plot(x, z2 + u2, "r", label=r"$z_2 + u_2$")
 ax[3, 1].plot(x, r3, "b", label=r"$r_3$")
-ax[3, 1].plot(x, z3 + rho * u3, "r", label=r"$z_3 + \rho u_3$")
+ax[3, 1].plot(x, z3 + u3, "r", label=r"$z_3 + u_3$")
 
-ax[1, 2].plot(x, d1, "k", label=r"$d_1$")
-ax[1, 2].plot(x, z1 + u1, "r", label=r"$z_1 + u_1$")
-ax[2, 2].plot(x, d2, "k", label=r"$d_2$")
-ax[2, 2].plot(x, z2 + u2, "r", label=r"$z_2 + u_2$")
-ax[3, 2].plot(x, d3, "k", label=r"$d_3$")
-ax[3, 2].plot(x, z3 + u3, "r", label=r"$z_3 + u_3$")
-
-for axx in ax[1:, :].ravel():
+for axx in ax[1:, :-1].ravel():
     axx.legend()
     axx.grid(ls=":")
 ax[0, 0].legend()
@@ -276,7 +270,7 @@ ax[0, 0].grid(ls=":")
 ymin = d3.min()
 ymax = d3.max()
 
-for axx in ax[1:, :-1].ravel():
+for axx in ax[1:, 0].ravel():
     axx.set_ylim(ymin, ymax)
 ax[0, 0].set_ylim(ymin, ymax)
 
@@ -294,17 +288,22 @@ for axx in ax[0, 1:]:
     axx.axhline(s1, color=plt.cm.tab10(0), ls="--")
     axx.axhline(s2, color=plt.cm.tab10(1), ls="--")
 
+ax[1, -1].semilogx(np.arange(1, num_iter + 1), cost, "r", label=r"cost($\lambda$)")
+ax[1, -1].axhline(ref_cost, color="g", ls="--", label="optimal cost (Powell)")
+ax[1, -1].set_title("cost function", fontsize="medium")
+ax[1, -1].grid(ls=":")
+ax[1, -1].legend()
+
+for axx in ax[2:, -1]:
+    axx.set_axis_off()
+
+fig.savefig(
+    f"rho={rho:.1e}_beta={beta:.1e}_align={alignment_strategy}_approx_s2_{use_sub2_approx}.png"
+)
 fig.show()
 
 # %%
 # plot the cost function
-fig2, ax2 = plt.subplots(tight_layout=True)
-ax2.semilogx(np.arange(1, num_iter + 1), cost, "r", label="cost(lambda)")
-ax2.axhline(ref_cost, color="g", ls="--", label="optimal cost (Powell)")
-ax2.set_title("cost function")
-ax2.grid(ls=":")
-fig2.show()
-
 print(
     f"rho: {rho:.1e}, num_iter: {num_iter}, cost: {cost[-1]:.4e}, ref_cost: {ref_cost:.4e}"
 )
