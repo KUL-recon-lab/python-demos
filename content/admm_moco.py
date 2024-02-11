@@ -45,9 +45,9 @@ np.random.seed(1)
 n = 201
 noise_level = 0.15
 num_iter = 800
-beta = 1e0  # weight of the quad. prior
+beta = 1e1  # weight of the quad. prior
 alignment_strategy = (
-    0  # 1: z to z, 2: lam to z, 3: z+u to z+u, 4: lam to z+u, 0: no alignment
+    4  # 1: z to z, 2: lam to z, 3: z+u to z+u, 4: lam to z+u, 0: no alignment
 )
 motion_update_period = 1
 
@@ -58,7 +58,7 @@ use_sub2_approx = False
 # very small row means that the z's stay very close to the ind. recons of the data
 # which is better for motion estimation, but noise gets a problem
 # -> there should be a sweet spot for rho, here this is around 1e-1
-rho = 1e2
+rho = 1e0
 
 # %%
 
@@ -69,9 +69,11 @@ s3 = 0
 
 # errors for the shifts during recon
 # 0 means use of true shifts during recon
-s1_error = 0  # + n // 8  # set to -s1 for no shift modeling during recon
-s2_error = 0  # + n // 16  # set to -s2 for no shift modeling during recon
-s3_error = 0  #  # set to -s3 for no shift modeling during recon
+s1_error = -s1  # + n // 8  # set to -s1 for no shift modeling during recon
+s2_error = -s2  # + n // 16  # set to -s2 for no shift modeling during recon
+s3_error = -s3  #  # set to -s3 for no shift modeling during recon
+
+# %%
 
 # x coordinate
 x = np.linspace(-n // 2, n // 2, n)
@@ -83,9 +85,9 @@ diag_A = 1.2 * (x.max() - np.abs(x)) / x.max() + 0.1
 
 # setup the true object
 # simple rectangle
-f = (np.abs(x) < (n / 8)).astype(float)
+# f = (np.abs(x) < (n / 8)).astype(float)
 # gaussian profile
-# f = np.exp(-x**2 / (n/16)**2)
+f = np.exp(-(x**2) / (n / 8) ** 2)
 
 f1 = np.roll(f, s1)
 f2 = np.roll(f, s2)
