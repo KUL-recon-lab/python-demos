@@ -43,11 +43,11 @@ def cost_function(
 np.random.seed(1)
 
 n = 201
-noise_level = 0.15
+noise_level = 0.1
 num_iter = 800
 beta = 1e1  # weight of the quad. prior
 alignment_strategy = (
-    4  # 1: z to z, 2: lam to z, 3: z+u to z+u, 4: lam to z+u, 0: no alignment
+    0  # 1: z to z, 2: lam to z, 3: z+u to z+u, 4: lam to z+u, 0: no alignment
 )
 motion_update_period = 1
 
@@ -58,7 +58,7 @@ use_sub2_approx = False
 # very small row means that the z's stay very close to the ind. recons of the data
 # which is better for motion estimation, but noise gets a problem
 # -> there should be a sweet spot for rho, here this is around 1e-1
-rho = 1e0
+rho = 1e-2
 
 # %%
 
@@ -69,9 +69,9 @@ s3 = 0
 
 # errors for the shifts during recon
 # 0 means use of true shifts during recon
-s1_error = -s1  # + n // 8  # set to -s1 for no shift modeling during recon
-s2_error = -s2  # + n // 16  # set to -s2 for no shift modeling during recon
-s3_error = -s3  #  # set to -s3 for no shift modeling during recon
+s1_error = 0  # + n // 8  # set to -s1 for no shift modeling during recon
+s2_error = 0  # + n // 16  # set to -s2 for no shift modeling during recon
+s3_error = 0  #  # set to -s3 for no shift modeling during recon
 
 # %%
 
@@ -85,9 +85,9 @@ diag_A = 1.2 * (x.max() - np.abs(x)) / x.max() + 0.1
 
 # setup the true object
 # simple rectangle
-# f = (np.abs(x) < (n / 8)).astype(float)
+f = (np.abs(x) < (n / 8)).astype(float)
 # gaussian profile
-f = np.exp(-(x**2) / (n / 8) ** 2)
+# f = np.exp(-(x**2) / (n / 8) ** 2)
 
 f1 = np.roll(f, s1)
 f2 = np.roll(f, s2)
@@ -308,3 +308,10 @@ fig.show()
 print(
     f"rho: {rho:.1e}, num_iter: {num_iter}, cost: {cost[-1]:.4e}, ref_cost: {ref_cost:.4e}"
 )
+
+# %%
+# analytic calculate of the u's at convergence
+# u_k at convergence = -grad_z D_k (z_k) / rho
+v1 = -diag_A * (diag_A * z1 - d1) / rho
+v2 = -diag_A * (diag_A * z2 - d2) / rho
+v3 = -diag_A * (diag_A * z3 - d3) / rho
