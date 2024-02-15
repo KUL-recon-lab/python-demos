@@ -42,13 +42,11 @@ def cost_function(
 # input parameters
 np.random.seed(1)
 
-n = 201
-noise_level = 0.1
-num_iter = 800
-beta = 1e1  # weight of the quad. prior
-alignment_strategy = (
-    0  # 1: z to z, 2: lam to z, 3: z+u to z+u, 4: lam to z+u, 0: no alignment
-)
+n = 201  # 201
+noise_level = 0.03
+num_iter = 20
+beta = 1e0  # weight of the quad. prior
+alignment_strategy = 1  # 1: z to z, 2: lam to z, 3: z+u to z+u, 4: lam to z+u, 5: z + a*rho*u to z+a*rho*u 0: no alignment
 motion_update_period = 1
 
 use_sub2_approx = False
@@ -58,7 +56,7 @@ use_sub2_approx = False
 # very small row means that the z's stay very close to the ind. recons of the data
 # which is better for motion estimation, but noise gets a problem
 # -> there should be a sweet spot for rho, here this is around 1e-1
-rho = 1e-2
+rho = 1e-1
 
 # %%
 
@@ -69,9 +67,9 @@ s3 = 0
 
 # errors for the shifts during recon
 # 0 means use of true shifts during recon
-s1_error = 0  # + n // 8  # set to -s1 for no shift modeling during recon
-s2_error = 0  # + n // 16  # set to -s2 for no shift modeling during recon
-s3_error = 0  #  # set to -s3 for no shift modeling during recon
+s1_error = -s1  # 0 + n // 8  # set to -s1 for no shift modeling during recon
+s2_error = -s2  # 0 + n // 16  # set to -s2 for no shift modeling during recon
+s3_error = -s3  # 0  #  # set to -s3 for no shift modeling during recon
 
 # %%
 
@@ -80,6 +78,7 @@ x = np.linspace(-n // 2, n // 2, n)
 # setup a simple diagonal operator A which is a multiplication with a triangle profile
 # this can be inverted / transposed easily
 diag_A = 1.2 * (x.max() - np.abs(x)) / x.max() + 0.1
+# diag_A = np.exp(-(x**2) / (n / 4) ** 2) + 0.2
 
 # %%
 
@@ -151,11 +150,15 @@ sr2s = [sr2]
 sr3s = [sr3]
 
 # init variables
-lam = np.zeros(n)
+# lam = np.zeros(n)
+# u1 = np.zeros(n)
+# u2 = np.zeros(n)
+# u3 = np.zeros(n)
 
-u1 = np.zeros(n)
-u2 = np.zeros(n)
-u3 = np.zeros(n)
+lam = (np.roll(r1, -sr1) + np.roll(r2, -sr2) + np.roll(r3, -sr3)) / 3
+u1 = -diag_A * (diag_A * r1 - d1) / rho
+u2 = -diag_A * (diag_A * r2 - d2) / rho
+u3 = -diag_A * (diag_A * r3 - d3) / rho
 
 cost = np.zeros(num_iter)
 
@@ -215,6 +218,31 @@ for i in range(num_iter):
             sr2 = np.argmin(
                 [((np.roll(lam, i) - (z2 + u2)) ** 2).sum() for i in range(n)]
             )
+        elif alignment_strategy == 5:
+            sr1 = np.argmin(
+                [
+                    (
+                        (
+                            np.roll(z3 + rho * u3 / diag_A**2, i)
+                            - (z1 + rho * u1 / diag_A**2)
+                        )
+                        ** 2
+                    ).sum()
+                    for i in range(n)
+                ]
+            )
+            sr2 = np.argmin(
+                [
+                    (
+                        (
+                            np.roll(z3 + rho * u3 / diag_A**2, i)
+                            - (z2 + rho * u2 / diag_A**2)
+                        )
+                        ** 2
+                    ).sum()
+                    for i in range(n)
+                ]
+            )
         else:
             raise ValueError("alignment_strategy not valid")
 
@@ -256,11 +284,11 @@ ax[3, 0].plot(x, r3, "b", label=r"$r_3$")
 ax[3, 0].plot(x, z3, "r", label=r"$z_3$")
 
 ax[1, 1].plot(x, r1, "b", label=r"$r_1$")
-ax[1, 1].plot(x, z1 + u1, "r", label=r"$z_1 + u_1$")
+ax[1, 1].plot(x, z1 + rho * u1 / (diag_A**2), "r", label=r"$z_1 + \alpha \rho u_1$")
 ax[2, 1].plot(x, r2, "b", label=r"$r_2$")
-ax[2, 1].plot(x, z2 + u2, "r", label=r"$z_2 + u_2$")
+ax[2, 1].plot(x, z2 + rho * u2 / (diag_A**2), "r", label=r"$z_2 +  \alpha \rho u_2$")
 ax[3, 1].plot(x, r3, "b", label=r"$r_3$")
-ax[3, 1].plot(x, z3 + u3, "r", label=r"$z_3 + u_3$")
+ax[3, 1].plot(x, z3 + rho * u3 / (diag_A**2), "r", label=r"$z_3 +  \alpha \rho u_3$")
 
 for axx in ax[1:, :-1].ravel():
     axx.legend()
@@ -315,3 +343,43 @@ print(
 v1 = -diag_A * (diag_A * z1 - d1) / rho
 v2 = -diag_A * (diag_A * z2 - d2) / rho
 v3 = -diag_A * (diag_A * z3 - d3) / rho
+
+# calucate the sum of the back shifted u's
+# add convergence that should be d/dlam R(lam)
+# if there is no regularization that should be 0
+
+q = rho * (np.roll(u1, -s1) + np.roll(u2, -s2) + np.roll(u3, -s3))
+print(np.abs(q).max())
+
+# %%
+# calculate solution for (n,n) motion matrix with Tik reg.
+# LAM = np.zeros((n, n**2))
+#
+# for i in range(n):
+#    LAM[i, i * n : (i + 1) * n] = lam
+#
+# beta_s = 1e-2
+#
+# ss1 = (
+#    np.linalg.inv(rho * (LAM.T @ LAM) + beta_s * np.eye(n**2)) @ (LAM.T @ (z1 + u1))
+# ).reshape(n, n)
+# ss2 = (
+#    np.linalg.inv(rho * (LAM.T @ LAM) + beta_s * np.eye(n**2)) @ (LAM.T @ (z2 + u2))
+# ).reshape(n, n)
+# ss3 = (
+#    np.linalg.inv(rho * (LAM.T @ LAM) + beta_s * np.eye(n**2)) @ (LAM.T @ (z3 + u3))
+# ).reshape(n, n)
+#
+# fig3, ax3 = plt.subplots(1, 3, figsize=(12, 2), tight_layout=True)
+# ax3[0].plot(lam, label=r"$\lambda$")
+# ax3[0].plot(z1 + u1, label=r"$z_1 + u_1$")
+# ax3[0].plot(ss1 @ lam, "--", label=r"$S_1 \lambda$")
+# ax3[1].plot(lam)
+# ax3[1].plot(z2 + u2)
+# ax3[1].plot(ss2 @ lam, "--")
+# ax3[2].plot(lam)
+# ax3[2].plot(z3 + u3)
+# ax3[2].plot(ss3 @ lam, "--")
+# ax3[0].legend()
+# fig.show()
+#
